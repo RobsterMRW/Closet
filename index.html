@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Swipe through your own clothes to put outfits together.">
+<meta name="theme-color" content="#F1F0F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141219" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Closet">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Swipe Closet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@1,6..96,500;1,6..96,600&family=Outfit:wght@400;500;600&display=swap">
+<style>
+/* Layout: a fitting-room mirror — stacked swipe rails (layer / top / bottom / shoes) over a bottom tab bar; closet and saved views scroll. */
+:root{
+  --bg:#F1F0F5; --surface:#FFFFFF; --ink:#1E1A2B; --muted:#6C6680; --line:#DEDBE7;
+  --accent:#C93A64; --accent-ink:#FFFFFF; --chip:#E8E5F0; --scrim:rgba(20,16,30,.42);
+  --font-display:"Bodoni Moda", "Didot", "Times New Roman", serif;
+  --font-body:"Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#141219; --surface:#1F1C27; --ink:#EEEBF5; --muted:#A39DB5; --line:#2F2B3A;
+  --accent:#FF6E95; --accent-ink:#1A0D13; --chip:#2A2634; --scrim:rgba(0,0,0,.6); color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#141219; --surface:#1F1C27; --ink:#EEEBF5; --muted:#A39DB5; --line:#2F2B3A;
+  --accent:#FF6E95; --accent-ink:#1A0D13; --chip:#2A2634; --scrim:rgba(0,0,0,.6); color-scheme:dark }
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;display:flex;flex-direction:column;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.gutter{padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.track:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:12px 6px}
+.logo{font-family:var(--font-display);font-style:italic;font-weight:600;font-size:27px;letter-spacing:-.01em;margin:0;line-height:1}
+.count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.view{flex:1;min-height:0;display:flex;flex-direction:column}
+.view.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* Mode switch: separates vs dress */
+.modes{display:flex;justify-content:center;padding-block:2px 6px}
+.seg{display:inline-flex;background:var(--chip);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:999px;padding:6px 16px;font-size:14px;color:var(--muted);font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.check{flex-direction:row!important;align-items:center;gap:10px!important;text-transform:none!important;letter-spacing:0!important;font-size:15px!important;color:var(--ink)!important;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+.check input{width:20px!important;height:20px;flex:0 0 auto;accent-color:var(--accent);margin:0}
+.check span small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.cat-pick button:last-child:nth-child(odd){grid-column:1 / -1}
+.sheet .seg{align-self:flex-start;flex-wrap:wrap}
+.backup{display:flex;gap:8px;flex-wrap:wrap;padding-block:4px 0}
+
+/* Outfit rails */
+.rows{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding-block:4px 8px}
+.row{flex:1;min-height:84px;position:relative}
+.row-label{position:absolute;top:6px;left:max(16px, env(safe-area-inset-left, 0px));z-index:2;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500;pointer-events:none;font-variant-numeric:tabular-nums}
+.lock{position:absolute;top:2px;right:max(12px, env(safe-area-inset-right, 0px));z-index:2;border:0;background:transparent;color:var(--muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:6px 6px;border-radius:8px}
+.lock[aria-pressed="true"]{color:var(--accent);font-weight:600}
+.track{height:100%;display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;padding-inline:22%;scrollbar-width:none;overscroll-behavior-x:contain}
+.track::-webkit-scrollbar{display:none}
+.card{flex:0 0 56%;scroll-snap-align:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;display:flex;align-items:center;justify-content:center;padding:22px 10px 8px;position:relative;min-width:0;overflow:hidden}
+.card img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none;-webkit-user-drag:none}
+.card .tag{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:11px;background:var(--chip);color:var(--ink);padding:2px 8px;border-radius:999px;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis}
+.card.none,.card.empty{background:transparent;border-style:dashed;color:var(--muted);font-size:14px;text-align:center}
+.card.empty button{border:0;background:var(--chip);padding:8px 14px;border-radius:999px}
+.arrow{display:none}
+@media (hover:hover) and (pointer:fine){
+  .arrow{display:grid;place-items:center;position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:18px;line-height:1}
+  .arrow.prev{left:max(16px, env(safe-area-inset-left, 0px))}
+  .arrow.next{right:max(16px, env(safe-area-inset-right, 0px))}
+}
+.actions{display:flex;gap:10px;padding-block:4px 10px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:12px 18px;font-weight:500;flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{flex:0 0 auto;padding:8px 14px;font-size:14px}
+.btn.danger{color:var(--accent)}
+
+/* Closet */
+.section{padding-block:10px 4px}
+.section h2,.saved-head h2{font-family:var(--font-display);font-style:italic;font-weight:500;font-size:21px;margin:0 0 8px;display:flex;align-items:baseline;gap:8px;text-wrap:balance}
+.section h2 small{font-family:var(--font-body);font-style:normal;font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;font-variant-numeric:tabular-nums}
+.closet-bar{display:flex;gap:8px;flex-wrap:wrap;padding-block:6px 4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.thumb{aspect-ratio:3/4;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:contain}
+.thumb .sample{position:absolute;top:5px;left:5px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;background:var(--chip);color:var(--muted);padding:1px 5px;border-radius:4px}
+.empty-note{color:var(--muted);font-size:14px;margin:0 0 6px}
+.footnote{color:var(--muted);font-size:12px;padding-block:14px 18px;max-width:60ch}
+
+/* Saved */
+.saved-head{padding-block:10px 4px}
+.saved-list{display:flex;flex-direction:column;gap:10px;padding-block:4px 18px}
+.saved{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.saved-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.saved-top h3{margin:0;font-size:16px;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.saved-top time{color:var(--muted);font-size:12px;white-space:nowrap}
+.minis{display:flex;gap:6px}
+.minis div{flex:1;aspect-ratio:1;max-width:100%;background:var(--bg);border-radius:10px;padding:4px;display:flex;align-items:center;justify-content:center}
+.minis img{width:100%;height:100%;object-fit:contain}
+.saved-actions{display:flex;gap:8px}
+
+/* Tabs */
+nav.tabs{display:flex;border-top:1px solid var(--line);background:var(--surface)}
+nav.tabs button{flex:1;border:0;background:transparent;padding:10px 4px 12px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-selected="true"]{color:var(--accent);font-weight:600}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--surface);border-radius:20px 20px 0 0;padding-top:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));max-height:88%;overflow-y:auto;display:flex;flex-direction:column;gap:12px;animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+.sheet h3{font-family:var(--font-display);font-style:italic;font-weight:500;font-size:22px;margin:0}
+.sheet p{margin:0;color:var(--muted);font-size:14px}
+.sheet label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.sheet input,.sheet select{font:inherit;font-size:16px;text-transform:none;letter-spacing:0;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:100%}
+.cat-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cat-pick button{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:16px 10px;font-weight:500;font-size:16px}
+.sheet .preview{background:var(--bg);border-radius:14px;height:min(40vh,320px);display:flex;align-items:center;justify-content:center;padding:10px}
+.sheet .preview img{max-height:100%;max-width:100%;object-fit:contain}
+.sheet .row-btns{display:flex;gap:8px;flex-wrap:wrap}
+.sheet-inner{display:flex;flex-direction:column;gap:12px}
+
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:calc(100% - 32px);text-align:center}
+
+@media (min-width:720px){
+  .rows,.actions{max-width:640px;width:100%;margin-inline:auto}
+  .card{flex-basis:46%}
+  .track{padding-inline:27%}
+}
+@media (prefers-reduced-motion: reduce){ .sheet{animation:none} .track{scroll-behavior:auto} }
+</style>
+
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+</style>
+</head>
+<body>
+<header class="top gutter">
+  <h1 class="logo">Swipe Closet</h1>
+  <span class="count" id="count"></span>
+</header>
+
+<main>
+  <section class="view" id="view-outfit" aria-label="Build an outfit">
+    <div class="modes gutter"><div class="seg" role="group" aria-label="Outfit type">
+      <button type="button" data-mode="separates" aria-pressed="true">Separates</button>
+      <button type="button" data-mode="dress" aria-pressed="false">Dress</button>
+    </div></div>
+    <div class="rows" id="rows"></div>
+    <div class="actions gutter">
+      <button class="btn" id="shuffle" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+        Shuffle
+      </button>
+      <button class="btn primary" id="save-outfit" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        Save outfit
+      </button>
+    </div>
+  </section>
+
+  <section class="view scroll" id="view-closet" aria-label="Closet" hidden>
+    <div class="gutter">
+      <div class="closet-bar">
+        <button class="btn primary small" id="add-clothes" type="button">+ Add clothes</button>
+        <button class="btn small danger" id="clear-samples" type="button" hidden>Remove example clothes</button>
+      </div>
+      <div id="closet-sections"></div>
+      <p class="footnote">Clothes and outfits are saved on this phone, in this browser. Photos are shrunk when you add them so 200 pieces fit comfortably.</p>
+      <div class="backup" id="backup" hidden>
+        <button class="btn small" type="button" id="do-backup">Back up closet</button>
+        <button class="btn small" type="button" id="do-restore">Restore a backup</button>
+      </div>
+      <p class="footnote" id="backup-note" hidden>Back up now and then so the closet is safe if Safari's data is ever cleared. Save the file to iCloud Drive in Files.</p>
+    </div>
+  </section>
+
+  <section class="view scroll" id="view-saved" aria-label="Saved outfits" hidden>
+    <div class="gutter">
+      <div class="saved-head"><h2>Saved outfits</h2></div>
+      <div class="saved-list" id="saved-list"></div>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs gutter" role="tablist">
+  <button role="tab" aria-selected="true" data-tab="outfit" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3z"/></svg>
+    Outfit
+  </button>
+  <button role="tab" aria-selected="false" data-tab="closet" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6a2 2 0 1 1 2-2"/><path d="M12 6v2L3 15a1.5 1.5 0 0 0 1 2.7h16A1.5 1.5 0 0 0 21 15l-9-7"/></svg>
+    Closet
+  </button>
+  <button role="tab" aria-selected="false" data-tab="saved" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    Saved
+  </button>
+</nav>
+
+<input type="file" id="file-input" accept="image/*" multiple hidden>
+<input type="file" id="restore-input" accept="application/json,.json" hidden>
+<div id="sheet-root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function(){
+const CATS=[
+  {key:'layer',label:'Layer',plural:'Layers',optional:true},
+  {key:'top',label:'Top',plural:'Tops'},
+  {key:'bottom',label:'Bottom',plural:'Bottoms'},
+  {key:'dress',label:'Dress',plural:'Dresses'},
+  {key:'shoes',label:'Shoes',plural:'Shoes'}
+];
+const MODE_CATS={separates:['layer','top','bottom','shoes'],dress:['layer','dress','shoes']};
+const railCats=()=>MODE_CATS[state.mode].map(catOf);
+const catOf=k=>CATS.find(c=>c.key===k);
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+/* ---------- storage (IndexedDB, falls back to memory) ---------- */
+let db=null;
+const mem={items:new Map(),outfits:new Map(),meta:new Map()};
+const keyOf=(store,o)=>store==='meta'?o.k:o.id;
+function openDB(){return new Promise((res,rej)=>{
+  try{
+    if(!window.indexedDB) return rej(new Error('no idb'));
+    const r=indexedDB.open('swipe-closet',1);
+    r.onupgradeneeded=()=>{const d=r.result;
+      d.createObjectStore('items',{keyPath:'id'});
+      d.createObjectStore('outfits',{keyPath:'id'});
+      d.createObjectStore('meta',{keyPath:'k'});};
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  }catch(e){rej(e)}
+});}
+function run(store,mode,fn){
+  if(!db) return Promise.resolve(fn(null));
+  return new Promise((res,rej)=>{try{
+    const t=db.transaction(store,mode); const s=t.objectStore(store); const req=fn(s);
+    t.oncomplete=()=>res(req&&req.result); t.onerror=()=>rej(t.error);
+  }catch(e){rej(e)}});
+}
+const put=(store,o)=>db?run(store,'readwrite',s=>s.put(o)):(mem[store].set(keyOf(store,o),o),Promise.resolve());
+const del=(store,id)=>db?run(store,'readwrite',s=>s.delete(id)):(mem[store].delete(id),Promise.resolve());
+const getAll=store=>db?run(store,'readonly',s=>s.getAll()):Promise.resolve([...mem[store].values()]);
+const get=(store,k)=>db?run(store,'readonly',s=>s.get(k)):Promise.resolve(mem[store].get(k));
+
+/* ---------- example garments (drawn, clearly marked as examples) ---------- */
+const SHAPES={
+  tee:'M60 30 L85 22 Q100 36 115 22 L140 30 L175 60 L155 82 L140 72 L140 175 L60 175 L60 72 L45 82 L25 60 Z',
+  tank:'M75 25 L88 25 Q100 52 112 25 L125 25 Q125 55 140 70 L140 175 L60 175 L60 70 Q75 55 75 25 Z',
+  sweater:'M60 30 L85 22 Q100 36 115 22 L140 30 L168 60 L184 150 L164 156 L145 88 L142 175 L58 175 L55 88 L36 156 L16 150 L32 60 Z',
+  jacket:'M60 30 L85 20 L100 60 L115 20 L140 30 L168 60 L184 150 L164 156 L145 88 L142 178 L58 178 L55 88 L36 156 L16 150 L32 60 Z',
+  jeans:'M65 18 L135 18 L146 182 L110 182 L100 70 L90 182 L54 182 Z',
+  skirt:'M70 30 L130 30 L162 162 Q100 176 38 162 Z',
+  shorts:'M62 40 L138 40 L149 132 L108 137 L100 86 L92 137 L51 132 Z',
+  sneaker:'M22 122 L24 96 Q30 86 46 89 L80 96 Q96 70 116 76 L142 110 Q172 116 180 132 L180 148 L22 148 Z',
+  boot:'M58 28 L112 28 L114 110 Q162 116 172 140 L172 162 L58 162 Z',
+  flat:'M24 130 Q30 108 62 106 L140 106 Q176 110 179 134 Q176 152 140 152 L52 152 Q24 150 24 130 Z',
+  dress:'M78 18 L90 18 Q100 34 110 18 L122 18 Q120 50 128 72 L166 180 Q100 192 34 180 L72 72 Q80 50 78 18 Z'
+};
+const EXTRA={jacket:'<path d="M100 60 L100 178" stroke="rgba(0,0,0,.28)" stroke-width="3" fill="none"/>',
+  jeans:'<path d="M65 34 L135 34" stroke="rgba(0,0,0,.25)" stroke-width="3"/>',
+  sneaker:'<path d="M22 140 L180 140" stroke="rgba(0,0,0,.18)" stroke-width="8"/>'};
+function garment(shape,color){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="${SHAPES[shape]}" fill="${color}" stroke="rgba(0,0,0,.35)" stroke-width="2.5" stroke-linejoin="round"/>${EXTRA[shape]||''}</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+const SAMPLES=[
+  ['layer','Denim jacket','jacket','#5B7BA6'],['layer','Oat cardigan','sweater','#E3D5BC'],['layer','Black blazer','jacket','#2B2B31'],
+  ['top','White tee','tee','#F6F6F2'],['top','Sage tank','tank','#9DB59A'],['top','Navy sweater','sweater','#2F3E63'],['top','Blush tee','tee','#EFB7C0'],
+  ['bottom','Blue jeans','jeans','#4F6E9E'],['bottom','Black skirt','skirt','#26252B'],['bottom','Khaki shorts','shorts','#C7B28A'],['bottom','Black jeans','jeans','#2E2E34'],
+  ['shoes','White sneakers','sneaker','#F2F2EE'],['shoes','Brown boots','boot','#7A4E33'],['shoes','Black flats','flat','#232227'],
+  ['dress','Rose sundress','dress','#D98BA0'],['dress','Little black dress','dress','#232227'],['dress','Green midi','dress','#6F8F72']
+];
+
+/* ---------- state ---------- */
+const state={items:[],outfits:[],idx:{layer:0,top:0,bottom:0,dress:0,shoes:0},locked:{},tab:'outfit',pendingCat:null,mode:'separates'};
+const ls={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:v;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){}}};
+const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
+const inCat=k=>state.items.filter(i=>i.cat===k);
+const railList=k=>{const l=inCat(k);return catOf(k).optional?[{id:null,none:true},...l]:l;};
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg,ms=2200){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);if(ms)toastT=setTimeout(()=>t.hidden=true,ms);}
+
+/* ---------- outfit rails ---------- */
+function stepOf(track){const c=track.querySelector('.card');return c?c.offsetWidth+12:1;}
+function renderRows(){
+  const wrap=$('#rows');
+  wrap.innerHTML=railCats().map(c=>{
+    const list=railList(c.key);
+    let cards;
+    if(!inCat(c.key).length && !c.optional){
+      cards=`<div class="card empty"><button type="button" data-go="closet">Add ${c.plural.toLowerCase()}</button></div>`;
+    }else{
+      cards=list.map(i=>i.none
+        ?`<div class="card none" data-id="">No ${c.label.toLowerCase()}</div>`
+        :`<div class="card" data-id="${i.id}"><img src="${i.img}" alt="${esc(i.name)}"><span class="tag">${esc(i.name)}</span></div>`).join('');
+    }
+    const locked=!!state.locked[c.key];
+    return `<div class="row" data-cat="${c.key}">
+      <span class="row-label" id="lbl-${c.key}"></span>
+      <button class="lock" type="button" data-lock="${c.key}" aria-pressed="${locked}" aria-label="Keep ${c.label.toLowerCase()} when shuffling">${locked?'Kept':'Keep'}</button>
+      <button class="arrow prev" type="button" data-step="-1" aria-label="Previous ${c.label.toLowerCase()}">‹</button>
+      <div class="track" tabindex="0" id="track-${c.key}" aria-label="${c.plural}">${cards}</div>
+      <button class="arrow next" type="button" data-step="1" aria-label="Next ${c.label.toLowerCase()}">›</button>
+    </div>`;
+  }).join('');
+  requestAnimationFrame(()=>{
+    railCats().forEach(c=>{
+      const tr=$('#track-'+c.key); const n=tr.querySelectorAll('.card').length;
+      state.idx[c.key]=Math.max(0,Math.min(state.idx[c.key]||0,n-1));
+      tr.scrollLeft=state.idx[c.key]*stepOf(tr);
+      updateLabel(c.key);
+      let t; tr.addEventListener('scroll',()=>{clearTimeout(t);t=setTimeout(()=>{
+        state.idx[c.key]=Math.round(tr.scrollLeft/stepOf(tr));updateLabel(c.key);},60);},{passive:true});
+      tr.addEventListener('keydown',e=>{if(e.key==='ArrowRight'){e.preventDefault();go(c.key,1);}if(e.key==='ArrowLeft'){e.preventDefault();go(c.key,-1);}});
+    });
+  });
+}
+function updateLabel(k){
+  const c=catOf(k); const l=$('#lbl-'+k); if(!l) return;
+  const n=inCat(k).length;
+  if(!n){l.textContent=c.label;return;}
+  const i=state.idx[k]; const pos=c.optional?i:i+1;
+  l.textContent=(c.optional&&i===0)?`${c.label} · none`:`${c.label} · ${pos} of ${n}`;
+}
+function scrollToIdx(k,i,smooth=true){
+  const tr=$('#track-'+k); if(!tr) return;
+  const n=tr.querySelectorAll('.card').length; i=Math.max(0,Math.min(i,n-1));
+  state.idx[k]=i; tr.scrollTo({left:i*stepOf(tr),behavior:(smooth&&!reduce)?'smooth':'auto'}); updateLabel(k);
+}
+function go(k,d){scrollToIdx(k,(state.idx[k]||0)+d);}
+function shuffle(){
+  railCats().forEach(c=>{
+    if(state.locked[c.key]) return;
+    const n=railList(c.key).length; if(n<2) return;
+    let i; do{i=Math.floor(Math.random()*n);}while(i===state.idx[c.key]);
+    scrollToIdx(c.key,i);
+  });
+}
+function currentPicks(){
+  const p={}; railCats().forEach(c=>{const l=railList(c.key); const it=l[state.idx[c.key]]; p[c.key]=it&&!it.none?it.id:null;}); return p;
+}
+
+/* ---------- closet ---------- */
+function renderCloset(){
+  $('#clear-samples').hidden=!state.items.some(i=>i.sample);
+  $('#closet-sections').innerHTML=CATS.map(c=>{
+    const l=inCat(c.key);
+    return `<div class="section"><h2>${c.plural} <small>${l.length} ${l.length===1?'piece':'pieces'}</small></h2>
+      ${l.length?`<div class="grid">${l.map(i=>`<button class="thumb" type="button" data-item="${i.id}" aria-label="${esc(i.name)}"><img src="${i.img}" alt="">${i.sample?'<span class="sample">Example</span>':''}</button>`).join('')}</div>`
+      :`<p class="empty-note">No ${c.plural.toLowerCase()} yet.</p>`}</div>`;
+  }).join('');
+}
+
+/* ---------- saved ---------- */
+function renderSaved(){
+  const list=[...state.outfits].sort((a,b)=>b.created-a.created);
+  const byId=Object.fromEntries(state.items.map(i=>[i.id,i]));
+  $('#saved-list').innerHTML=list.length?list.map(o=>{
+    const minis=MODE_CATS[o.mode||(o.picks.dress?'dress':'separates')].map(k=>byId[o.picks[k]]).filter(Boolean);
+    const d=new Date(o.created).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    return `<article class="saved">
+      <div class="saved-top"><h3>${esc(o.name)}</h3><time>${d}</time></div>
+      <div class="minis">${minis.length?minis.map(i=>`<div><img src="${i.img}" alt="${esc(i.name)}"></div>`).join(''):'<p class="empty-note">These pieces were removed from the closet.</p>'}</div>
+      <div class="saved-actions"><button class="btn small primary" type="button" data-wear="${o.id}">Wear this</button><button class="btn small danger" type="button" data-del-outfit="${o.id}">Delete</button></div>
+    </article>`;}).join('')
+    :`<p class="empty-note">No saved outfits yet. Swipe one together on the Outfit tab and tap Save outfit.</p>`;
+}
+
+function renderCount(){const n=state.items.length;$('#count').textContent=`${n} ${n===1?'piece':'pieces'}`;}
+function renderAll(){renderCount();renderRows();renderCloset();renderSaved();}
+
+/* ---------- tabs ---------- */
+function setTab(t){
+  state.tab=t;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
+  ['outfit','closet','saved'].forEach(v=>$('#view-'+v).hidden=v!==t);
+  if(t==='outfit') renderRows(); if(t==='closet') renderCloset(); if(t==='saved') renderSaved();
+}
+
+/* ---------- sheets ---------- */
+function openSheet(html,onMount){
+  const root=$('#sheet-root');
+  root.innerHTML=`<div class="scrim" data-close></div><div class="sheet gutter" role="dialog" aria-modal="true"><div class="sheet-inner">${html}</div></div>`;
+  onMount&&onMount(root.querySelector('.sheet'));
+  const f=root.querySelector('input,button:not([data-close])'); f&&f.focus({preventScroll:true});
+}
+function closeSheet(){$('#sheet-root').innerHTML='';}
+
+function syncModeBtns(){document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===state.mode));}
+
+function saveOutfitSheet(){
+  const picks=currentPicks();
+  if(!picks.top&&!picks.bottom&&!picks.dress&&!picks.shoes){toast('Add some clothes first');return;}
+  openSheet(`<h3>Save this outfit</h3>
+    <label for="outfit-name">Name<input id="outfit-name" maxlength="40" value="Outfit ${state.outfits.length+1}"></label>
+    <div class="row-btns"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="button" id="do-save">Save</button></div>`,
+  s=>{
+    const inp=s.querySelector('#outfit-name'); inp.select();
+    const save=async()=>{
+      const o={id:uid(),name:inp.value.trim()||`Outfit ${state.outfits.length+1}`,mode:state.mode,picks,created:Date.now()};
+      state.outfits.push(o); await put('outfits',o).catch(()=>{}); closeSheet(); toast('Saved “'+o.name+'”');
+    };
+    s.querySelector('#do-save').onclick=save;
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter')save();});
+  });
+}
+
+function addSheet(){
+  const clean=ls.get('sc-clean','1')==='1';
+  openSheet(`<h3>Add clothes</h3><p>Pick what you're adding, then choose photos or take one. You can add a bunch at once.</p>
+    <label class="check" for="clean-bg"><input type="checkbox" id="clean-bg"${clean?' checked':''}><span>Clean up backgrounds<small>Works best with clothes laid on a plain bed sheet, floor or wall that's a different colour from the clothing.</small></span></label>
+    <div class="cat-pick">${CATS.map(c=>`<button type="button" data-addcat="${c.key}">${c.plural}</button>`).join('')}</div>
+    <button class="btn" type="button" data-close>Cancel</button>`,
+  s=>{s.querySelector('#clean-bg').addEventListener('change',e=>ls.set('sc-clean',e.target.checked?'1':'0'));});
+}
+
+const BG_LEVELS=[['off','Original'],['gentle','Gentle'],['normal','Normal'],['strong','Strong']];
+function itemSheet(id){
+  const it=state.items.find(i=>i.id===id); if(!it) return;
+  const canClean=!!it.orig;
+  openSheet(`<div class="preview"><img id="item-preview" src="${it.img}" alt="${esc(it.name)}"></div>
+    ${canClean?`<label>Background<div class="seg" role="group" aria-label="Background cleanup">${BG_LEVELS.map(([k,l])=>`<button type="button" data-bg="${k}" aria-pressed="${(it.bg||'off')===k}">${l}</button>`).join('')}</div></label>`:''}
+    <label for="item-name">Name<input id="item-name" maxlength="40" value="${esc(it.name)}"></label>
+    <label for="item-cat">Type<select id="item-cat">${CATS.map(c=>`<option value="${c.key}"${c.key===it.cat?' selected':''}>${c.label}</option>`).join('')}</select></label>
+    <div class="row-btns"><button class="btn danger" type="button" id="del-item">Delete</button><button class="btn primary" type="button" id="save-item">Save changes</button></div>`,
+  s=>{
+    let draft={img:it.img,bg:it.bg||'off'};
+    s.querySelectorAll('[data-bg]').forEach(b=>b.addEventListener('click',async ev=>{
+      ev.stopPropagation(); const lvl=b.dataset.bg;
+      s.querySelectorAll('[data-bg]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+      if(lvl==='off'){draft={img:it.orig,bg:'off'};}
+      else{
+        toast('Cleaning up…',0);
+        const out=await cutout(it.orig,lvl);
+        if(out){draft={img:out,bg:lvl};toast('Background removed');}
+        else{toast("Couldn't find a plain background in this photo",3000);draft={img:it.orig,bg:'off'};s.querySelectorAll('[data-bg]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.bg==='off'));}
+      }
+      s.querySelector('#item-preview').src=draft.img;
+    }));
+    s.querySelector('#save-item').onclick=async()=>{
+      it.name=s.querySelector('#item-name').value.trim()||it.name; it.cat=s.querySelector('#item-cat').value;
+      it.img=draft.img; it.bg=draft.bg;
+      await put('items',it).catch(()=>{}); closeSheet(); renderCount(); renderCloset(); toast('Saved');
+    };
+    const d=s.querySelector('#del-item'); let armed=false;
+    d.onclick=async()=>{
+      if(!armed){armed=true;d.textContent='Tap again to delete';return;}
+      state.items=state.items.filter(i=>i.id!==id); await del('items',id).catch(()=>{});
+      closeSheet(); renderCount(); renderCloset(); toast('Deleted');
+    };
+  });
+}
+
+/* ---------- background cleanup (runs on the phone, free) ----------
+   Finds the plain colour around the edges of the photo and flood-fills it
+   away, then softens the edge and crops tight around the clothing. */
+function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+async function cutout(src,level){
+  const T={gentle:30,normal:46,strong:66}[level]||46;
+  const img=await loadImg(src);
+  const sc=Math.min(1,600/Math.max(img.naturalWidth,img.naturalHeight));
+  const W=Math.max(1,Math.round(img.naturalWidth*sc)), H=Math.max(1,Math.round(img.naturalHeight*sc));
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const x=c.getContext('2d',{willReadFrequently:true}); x.drawImage(img,0,0,W,H);
+  const id=x.getImageData(0,0,W,H), px=id.data, N=W*H;
+  const border=[]; for(let i=0;i<W;i++){border.push(i,(H-1)*W+i);} for(let j=1;j<H-1;j++){border.push(j*W,j*W+W-1);}
+  const med=ch=>{const a=border.map(p=>px[p*4+ch]).sort((m,n)=>m-n);return a[a.length>>1];};
+  const br=med(0),bgc=med(1),bb=med(2);
+  const dBg=p=>{const r=px[p*4]-br,g=px[p*4+1]-bgc,b=px[p*4+2]-bb;return r*r*1.2+g*g*1.6+b*b;};
+  const dPx=(p,q)=>{const r=px[p*4]-px[q*4],g=px[p*4+1]-px[q*4+1],b=px[p*4+2]-px[q*4+2];return r*r+g*g+b*b;};
+  const T2=T*T, far=(T*1.9)**2, step=(T*0.55)**2;
+  const mask=new Uint8Array(N), q=new Int32Array(N); let qh=0,qt=0;
+  for(const p of border){ if(!mask[p]&&dBg(p)<far){mask[p]=1;q[qt++]=p;} }
+  while(qh<qt){
+    const p=q[qh++], px0=p%W;
+    const nb=[px0>0?p-1:-1, px0<W-1?p+1:-1, p>=W?p-W:-1, p<N-W?p+W:-1];
+    for(const n of nb){ if(n<0||mask[n]) continue; const db=dBg(n);
+      if(db<T2||(db<far&&dPx(n,p)<step)){mask[n]=1;q[qt++]=n;} }
+  }
+  const removed=qt/N; if(removed<0.08||removed>0.97) return null;
+  let x0=W,y0=H,x1=-1,y1=-1;
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++){const p=j*W+i;
+    if(mask[p]){px[p*4+3]=0;continue;}
+    let bgN=0; for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=i+di,jj=j+dj; if(ii<0||jj<0||ii>=W||jj>=H||mask[jj*W+ii])bgN++;}
+    px[p*4+3]=Math.round(255*(1-bgN/9*0.85));
+    if(i<x0)x0=i; if(i>x1)x1=i; if(j<y0)y0=j; if(j>y1)y1=j;
+  }
+  if(x1<0) return null;
+  x.putImageData(id,0,0);
+  const pad=10; x0=Math.max(0,x0-pad); y0=Math.max(0,y0-pad); x1=Math.min(W-1,x1+pad); y1=Math.min(H-1,y1+pad);
+  const o=document.createElement('canvas'); o.width=x1-x0+1; o.height=y1-y0+1;
+  o.getContext('2d').drawImage(c,x0,y0,o.width,o.height,0,0,o.width,o.height);
+  const webp=o.toDataURL('image/webp',0.86);
+  return webp.startsWith('data:image/webp')?webp:o.toDataURL('image/png');
+}
+
+/* ---------- adding photos ---------- */
+function shrink(file){return new Promise((res,rej)=>{
+  const url=URL.createObjectURL(file); const img=new Image();
+  img.onload=()=>{const max=700; const s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*s); c.height=Math.round(img.naturalHeight*s);
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+    URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',0.82));};
+  img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('bad'));};
+  img.src=url;
+});}
+async function addFiles(files,cat){
+  const c=catOf(cat); const clean=ls.get('sc-clean','1')==='1';
+  let added=0, failed=0, kept=0; const start=inCat(cat).length;
+  for(let i=0;i<files.length;i++){
+    toast(`Adding ${i+1} of ${files.length}…`,0);
+    try{
+      const orig=await shrink(files[i]); let img=orig, bg='off';
+      if(clean){ try{const out=await cutout(orig,'normal'); if(out){img=out;bg='normal';} else kept++;}catch(e){kept++;} }
+      const it={id:uid(),cat,name:`${c.label} ${start+added+1}`,img,orig,bg,added:Date.now()+i,sample:false};
+      state.items.push(it); await put('items',it); added++;
+    }catch(e){failed++;}
+  }
+  renderCount(); renderCloset();
+  let msg=`Added ${added} ${added===1?c.label.toLowerCase():c.plural.toLowerCase()}.`;
+  if(kept) msg+=` ${kept} kept their background (tap one to try Strong).`;
+  if(failed) msg+=` ${failed} couldn't be read, try a JPG or PNG.`;
+  toast(msg,4200);
+}
+
+/* ---------- backup (only where downloads work, i.e. the hosted app) ---------- */
+async function backup(){
+  const data=JSON.stringify({app:'swipe-closet',version:1,saved:Date.now(),items:state.items.filter(i=>!i.sample),outfits:state.outfits.filter(o=>!o.sample)});
+  const name=`swipe-closet-backup-${new Date().toISOString().slice(0,10)}.json`;
+  const file=new File([data],name,{type:'application/json'});
+  try{ if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Swipe Closet backup'});return;} }catch(e){ if(e&&e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+async function restore(file){
+  try{
+    const d=JSON.parse(await file.text());
+    if(d.app!=='swipe-closet'||!Array.isArray(d.items)) throw new Error('not ours');
+    const have=new Set(state.items.map(i=>i.id)); let n=0;
+    for(const it of d.items){ if(!have.has(it.id)){state.items.push(it);n++;} await put('items',it); }
+    const haveO=new Set(state.outfits.map(o=>o.id));
+    for(const o of (d.outfits||[])){ if(!haveO.has(o.id)) state.outfits.push(o); await put('outfits',o); }
+    state.items.sort((a,b)=>a.added-b.added); renderCount(); renderCloset(); toast(`Restored ${n} new piece${n===1?'':'s'}`,3000);
+  }catch(e){toast("That file isn't a Swipe Closet backup",3000);}
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',async e=>{
+  const t=e.target.closest('button,[data-close]'); if(!t) return;
+  if(t.hasAttribute('data-close')) return closeSheet();
+  if(t.dataset.tab) return setTab(t.dataset.tab);
+  if(t.dataset.mode){ if(state.mode!==t.dataset.mode){state.mode=t.dataset.mode; ls.set('sc-mode',state.mode); syncModeBtns(); renderRows();} return; }
+  if(t.dataset.bg) return;
+  if(t.dataset.go) return setTab(t.dataset.go);
+  if(t.dataset.lock){const k=t.dataset.lock; state.locked[k]=!state.locked[k]; t.setAttribute('aria-pressed',state.locked[k]); t.textContent=state.locked[k]?'Kept':'Keep'; return;}
+  if(t.dataset.step){const k=t.closest('.row').dataset.cat; return go(k,+t.dataset.step);}
+  if(t.dataset.item) return itemSheet(t.dataset.item);
+  if(t.dataset.addcat){state.pendingCat=t.dataset.addcat; closeSheet(); const fi=$('#file-input'); fi.value=''; fi.click(); return;}
+  if(t.dataset.wear){
+    const o=state.outfits.find(x=>x.id===t.dataset.wear); if(!o) return;
+    state.mode=o.mode||(o.picks.dress?'dress':'separates'); syncModeBtns(); railCats().forEach(c=>{const l=railList(c.key); const i=l.findIndex(x=>(x.id||null)===(o.picks[c.key]||null)); state.idx[c.key]=i<0?0:i;});
+    setTab('outfit'); return;
+  }
+  if(t.dataset.delOutfit){
+    if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again';return;}
+    const id=t.dataset.delOutfit; state.outfits=state.outfits.filter(o=>o.id!==id); await del('outfits',id).catch(()=>{}); renderSaved(); return;
+  }
+  if(t.id==='shuffle') return shuffle();
+  if(t.id==='save-outfit') return saveOutfitSheet();
+  if(t.id==='add-clothes') return addSheet();
+  if(t.id==='do-backup') return backup();
+  if(t.id==='do-restore'){const r=$('#restore-input'); r.value=''; r.click(); return;}
+  if(t.id==='clear-samples'){
+    if(t.dataset.armed!=='1'){t.dataset.armed='1';t.textContent='Tap again to remove examples';return;}
+    const gone=state.items.filter(i=>i.sample); state.items=state.items.filter(i=>!i.sample);
+    for(const g of gone) await del('items',g.id).catch(()=>{});
+    const sampleOutfits=state.outfits.filter(o=>o.sample); state.outfits=state.outfits.filter(o=>!o.sample);
+    for(const o of sampleOutfits) await del('outfits',o.id).catch(()=>{});
+    t.dataset.armed=''; t.textContent='Remove example clothes'; renderCount(); renderCloset(); toast('Examples removed'); return;
+  }
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#sheet-root').innerHTML) closeSheet();});
+$('#restore-input').addEventListener('change',e=>{const f=e.target.files[0]; if(f) restore(f);});
+$('#file-input').addEventListener('change',e=>{const f=[...e.target.files]; if(f.length&&state.pendingCat) addFiles(f,state.pendingCat);});
+
+/* ---------- boot ---------- */
+async function boot(){
+  try{db=await openDB();}catch(e){db=null;}
+  try{
+    state.items=(await getAll('items'))||[]; state.outfits=(await getAll('outfits'))||[];
+    const seeded=await get('meta','seeded');
+    if(!seeded&&!state.items.length){
+      const now=Date.now();
+      state.items=SAMPLES.map(([cat,name,shape,color],i)=>({id:'ex'+i,cat,name,img:garment(shape,color),added:now+i,sample:true}));
+      const ex={id:'exo1',name:'Saturday errands',picks:{layer:'ex0',top:'ex3',bottom:'ex7',shoes:'ex11'},created:now,sample:true};
+      state.outfits=[ex];
+      for(const it of state.items) await put('items',it);
+      await put('outfits',ex); await put('meta',{k:'seeded',v:true}); await put('meta',{k:'dresses',v:true});
+    }else if(!(await get('meta','dresses'))&&state.items.some(i=>i.sample)){
+      const now=Date.now();
+      SAMPLES.forEach(([cat,name,shape,color],i)=>{ if(cat==='dress'&&!state.items.some(x=>x.id==='ex'+i)){ const it={id:'ex'+i,cat,name,img:garment(shape,color),added:now+i,sample:true}; state.items.push(it); put('items',it); } });
+      await put('meta',{k:'dresses',v:true});
+    }
+  }catch(e){ if(!state.items.length){ state.items=SAMPLES.map(([cat,name,shape,color],i)=>({id:'ex'+i,cat,name,img:garment(shape,color),added:i,sample:true})); } }
+  state.items.sort((a,b)=>a.added-b.added);
+  state.idx={layer:0,top:0,bottom:1,dress:0,shoes:0};
+  state.mode=ls.get('sc-mode','separates')==='dress'?'dress':'separates'; syncModeBtns();
+  if(!inFrame){ $('#backup').hidden=false; $('#backup-note').hidden=false; }
+  renderAll();
+}
+boot();
+})();
+</script>
+</body>
+</html>
